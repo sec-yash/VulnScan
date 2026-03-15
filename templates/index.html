@@ -1,0 +1,865 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VulnScan — Live Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Bebas+Neue&family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#06080b;--bg2:#0d1117;--bg3:#12181f;--bg4:#171e27;
+  --border:#ffffff0d;--border2:#ffffff18;--border3:#ffffff28;
+  --text:#dce4ee;--muted:#5a6a7e;--dim:#222c38;
+  --accent:#00d9ff;--accent-dim:#00d9ff20;
+  --critical:#ff3b5c;--high:#ff6b35;--medium:#ffb020;--low:#22d37a;--info:#5b8dee;
+  --crit-bg:#ff3b5c14;--high-bg:#ff6b3514;--med-bg:#ffb02014;--low-bg:#22d37a14;--info-bg:#5b8dee14;
+}
+html,body{height:100%;overflow:hidden}
+body{background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;display:flex;flex-direction:column}
+
+/* scan lines bg */
+body::after{content:'';position:fixed;inset:0;background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,217,255,.008) 2px,rgba(0,217,255,.008) 4px);pointer-events:none;z-index:0}
+
+/* ── TOPBAR ── */
+.topbar{height:54px;background:rgba(6,8,11,.95);border-bottom:1px solid var(--border2);display:flex;align-items:center;gap:16px;padding:0 24px;position:relative;z-index:50;flex-shrink:0}
+.logo{font-family:'Bebas Neue',cursive;font-size:24px;letter-spacing:3px;color:var(--accent);text-shadow:0 0 20px rgba(0,217,255,.35)}
+.logo b{color:var(--text)}
+.topbar-sep{width:1px;height:18px;background:var(--border2)}
+.status-pill{display:flex;align-items:center;gap:7px;font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--muted);background:var(--bg3);border:1px solid var(--border2);padding:4px 10px;border-radius:20px}
+.sdot{width:7px;height:7px;border-radius:50%;background:var(--muted)}
+.sdot.idle{background:var(--muted)}
+.sdot.running{background:var(--medium);box-shadow:0 0 6px var(--medium);animation:blink 1s step-end infinite}
+.sdot.complete{background:var(--low);box-shadow:0 0 6px var(--low)}
+.sdot.error{background:var(--critical);box-shadow:0 0 6px var(--critical)}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
+.topbar-right{margin-left:auto;display:flex;gap:10px;align-items:center}
+.tbtn{background:transparent;border:1px solid var(--border2);color:var(--muted);padding:6px 14px;border-radius:6px;font-family:'DM Sans',sans-serif;font-size:12px;cursor:pointer;transition:all .2s}
+.tbtn:hover{border-color:var(--border3);color:var(--text)}
+.tbtn.primary{background:var(--accent);color:#000;border-color:var(--accent);font-weight:600}
+.tbtn.primary:hover{background:#20e4ff}
+
+/* ── LAYOUT ── */
+.layout{display:flex;flex:1;overflow:hidden;position:relative;z-index:1}
+
+/* ── SIDEBAR ── */
+.sidebar{width:240px;background:var(--bg2);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow-y:auto;flex-shrink:0}
+.sidebar-logo-area{padding:20px 16px 12px;border-bottom:1px solid var(--border)}
+.scan-form{display:flex;flex-direction:column;gap:8px;padding:14px 12px;border-bottom:1px solid var(--border)}
+.scan-form label{font-size:10px;font-weight:600;letter-spacing:.7px;text-transform:uppercase;color:var(--muted);margin-bottom:2px;display:block}
+.sf-input{background:var(--bg);border:1px solid var(--border2);border-radius:7px;padding:8px 10px;color:var(--text);font-family:'JetBrains Mono',monospace;font-size:11px;outline:none;width:100%;transition:border-color .2s}
+.sf-input:focus{border-color:var(--accent)}
+.sf-input::placeholder{color:var(--dim)}
+.sf-select{background:var(--bg);border:1px solid var(--border2);border-radius:7px;padding:7px 10px;color:var(--text);font-family:'JetBrains Mono',monospace;font-size:11px;outline:none;width:100%;cursor:pointer}
+.module-grid{display:grid;grid-template-columns:1fr 1fr;gap:5px}
+.mod-check{display:flex;align-items:center;gap:5px;padding:5px 6px;border:1px solid var(--border);border-radius:5px;cursor:pointer;transition:all .15s;font-size:10px;color:var(--muted)}
+.mod-check:hover{border-color:var(--border2);color:var(--text)}
+.mod-check.on{border-color:var(--accent);background:var(--accent-dim);color:var(--accent)}
+.mod-check input{display:none}
+.scan-go{width:100%;padding:9px;background:var(--accent);color:#000;border:none;border-radius:7px;font-family:'DM Sans',sans-serif;font-weight:700;font-size:13px;cursor:pointer;letter-spacing:.3px;transition:all .2s;margin-top:2px}
+.scan-go:hover{background:#20e4ff}
+.scan-go:disabled{background:var(--dim);color:var(--muted);cursor:not-allowed}
+
+.sb-section{font-size:9px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:var(--dim);padding:14px 16px 6px}
+.sb-nav{display:flex;align-items:center;gap:9px;padding:8px 16px;cursor:pointer;font-size:13px;color:var(--muted);border-left:2px solid transparent;transition:all .15s;text-decoration:none}
+.sb-nav:hover{background:var(--bg3);color:var(--text)}
+.sb-nav.active{background:linear-gradient(90deg,rgba(0,217,255,.08),transparent);color:var(--accent);border-left-color:var(--accent)}
+.sb-nav .ico{font-size:13px;width:16px;text-align:center}
+.sb-badge{margin-left:auto;font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;padding:1px 7px;border-radius:20px}
+.sb-badge.c{background:var(--crit-bg);color:var(--critical)}
+.sb-badge.h{background:var(--high-bg);color:var(--high)}
+.sb-badge.m{background:var(--med-bg);color:var(--medium)}
+.sb-badge.l{background:var(--low-bg);color:var(--low)}
+.sb-badge.n{background:var(--bg3);color:var(--muted)}
+
+.sidebar-risk{margin:auto 12px 14px;background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:14px}
+.sr-label{font-size:9px;font-weight:700;letter-spacing:.8px;color:var(--muted);text-transform:uppercase;margin-bottom:8px}
+.sr-num{font-family:'Bebas Neue',cursive;font-size:46px;line-height:1;letter-spacing:2px;color:var(--muted)}
+.sr-bar{background:var(--bg);height:4px;border-radius:2px;overflow:hidden;margin:8px 0 5px}
+.sr-fill{height:100%;border-radius:2px;transition:width 1s ease,background 1s ease;width:0}
+.sr-tag{font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;letter-spacing:.8px;color:var(--muted)}
+
+/* ── MAIN AREA ── */
+.main{flex:1;display:flex;flex-direction:column;overflow:hidden}
+
+/* ── PAGE VIEWS ── */
+.page{display:none;flex:1;overflow-y:auto;padding:22px}
+.page.active{display:block}
+
+/* ── OVERVIEW PAGE ── */
+.stat-row{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:18px}
+.sc{background:var(--bg2);border:1px solid var(--border);border-radius:11px;padding:16px;position:relative;overflow:hidden;cursor:pointer;transition:all .2s}
+.sc::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;border-radius:2px 2px 0 0}
+.sc.tot::before{background:var(--accent)}
+.sc.cri::before{background:var(--critical)}
+.sc.hig::before{background:var(--high)}
+.sc.med::before{background:var(--medium)}
+.sc.low::before{background:var(--low)}
+.sc:hover{transform:translateY(-2px);border-color:var(--border2)}
+.sc-label{font-size:9px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:var(--muted);margin-bottom:8px}
+.sc-num{font-family:'Bebas Neue',cursive;font-size:42px;line-height:1;letter-spacing:1px}
+.sc.tot .sc-num{color:var(--accent)}
+.sc.cri .sc-num{color:var(--critical)}
+.sc.hig .sc-num{color:var(--high)}
+.sc.med .sc-num{color:var(--medium)}
+.sc.low .sc-num{color:var(--low)}
+.sc-sub{font-size:10px;color:var(--muted);margin-top:3px}
+
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:18px}
+.panel{background:var(--bg2);border:1px solid var(--border);border-radius:11px;overflow:hidden}
+.ph{padding:12px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:9px}
+.ph h3{font-size:11px;font-weight:600;letter-spacing:.6px;text-transform:uppercase;color:var(--muted);flex:1}
+.ph-ico{font-size:13px}
+.pb{padding:14px}
+
+/* Category bars */
+.vbr{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.vbl{width:80px;font-size:10px;color:var(--muted);text-align:right;flex-shrink:0}
+.vbt{flex:1;background:var(--bg);border-radius:2px;height:6px;overflow:hidden}
+.vbf{height:100%;border-radius:2px;transition:width 1.2s ease;width:0}
+.vbc{width:22px;font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;text-align:right}
+
+/* Donut */
+.donut-wrap{display:flex;align-items:center;gap:20px;padding:6px}
+.donut-leg{display:flex;flex-direction:column;gap:7px;flex:1}
+.dl-item{display:flex;align-items:center;gap:7px;font-size:12px}
+.dl-dot{width:7px;height:7px;border-radius:2px;flex-shrink:0}
+.dl-label{color:var(--muted);flex:1}
+.dl-val{font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700}
+
+/* ── TERMINAL LOG ── */
+.log-panel{background:var(--bg2);border:1px solid var(--border);border-radius:11px;overflow:hidden;margin-bottom:18px}
+.log-body{background:var(--bg);font-family:'JetBrains Mono',monospace;font-size:11.5px;padding:10px 14px;height:180px;overflow-y:auto;position:relative}
+.log-body::before{content:'';position:absolute;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,var(--accent),transparent);opacity:0;animation:scanln 2.5s linear infinite;pointer-events:none}
+.log-body.active::before{opacity:.3}
+@keyframes scanln{0%{top:0}100%{top:100%}}
+.ll{margin-bottom:3px;line-height:1.55;animation:fadein .15s ease}
+@keyframes fadein{from{opacity:0;transform:translateY(3px)}to{opacity:1;transform:none}}
+.ll .lts{color:#2a3545}
+.ll .ltag{font-weight:700}
+.ll .ltag.info{color:var(--accent)}
+.ll .ltag.ok{color:var(--low)}
+.ll .ltag.warn{color:var(--medium)}
+.ll .ltag.found{color:var(--critical)}
+.ll .ltag.error{color:var(--critical)}
+.ll .lmsg{color:#6a7d95}
+.ll .lhl{color:var(--text)}
+.cur{animation:blink 1s step-end infinite}
+
+/* ── FINDINGS PAGE ── */
+.findings-toolbar{display:flex;align-items:center;gap:8px;margin-bottom:14px;flex-wrap:wrap}
+.filt-chip{padding:4px 12px;border-radius:20px;font-size:11px;font-weight:600;cursor:pointer;border:1px solid var(--border2);color:var(--muted);background:transparent;transition:all .15s;font-family:'DM Sans',sans-serif}
+.filt-chip:hover{border-color:var(--border3);color:var(--text)}
+.filt-chip.ac{background:var(--accent);color:#000;border-color:var(--accent)}
+.filt-chip.ac-c{background:var(--critical);color:#fff;border-color:var(--critical)}
+.filt-chip.ac-h{background:var(--high);color:#fff;border-color:var(--high)}
+.filt-chip.ac-m{background:var(--medium);color:#000;border-color:var(--medium)}
+.filt-chip.ac-l{background:var(--low);color:#000;border-color:var(--low)}
+.search-wrap{margin-left:auto}
+.srch{background:var(--bg2);border:1px solid var(--border2);border-radius:7px;padding:7px 12px;color:var(--text);font-family:'JetBrains Mono',monospace;font-size:11px;outline:none;width:220px;transition:border-color .2s}
+.srch:focus{border-color:var(--accent)}
+.srch::placeholder{color:var(--dim)}
+.findings-table{background:var(--bg2);border:1px solid var(--border);border-radius:11px;overflow:hidden}
+.ft-head{display:grid;grid-template-columns:90px 1fr 100px 80px 36px;gap:10px;padding:9px 16px;border-bottom:1px solid var(--border);font-size:10px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:var(--muted)}
+.frow{border-bottom:1px solid var(--border);cursor:pointer;transition:background .12s}
+.frow:last-child{border-bottom:none}
+.frow:hover,.frow.open{background:var(--bg3)}
+.frow-main{display:grid;grid-template-columns:90px 1fr 100px 80px 36px;gap:10px;align-items:center;padding:11px 16px}
+.sev{padding:2px 8px;border-radius:4px;font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;letter-spacing:.4px;text-align:center;display:inline-block}
+.sev.CRITICAL{background:var(--crit-bg);color:var(--critical);border:1px solid rgba(255,59,92,.2)}
+.sev.HIGH{background:var(--high-bg);color:var(--high);border:1px solid rgba(255,107,53,.2)}
+.sev.MEDIUM{background:var(--med-bg);color:var(--medium);border:1px solid rgba(255,176,32,.2)}
+.sev.LOW{background:var(--low-bg);color:var(--low);border:1px solid rgba(34,211,122,.2)}
+.sev.INFO{background:var(--info-bg);color:var(--info);border:1px solid rgba(91,141,238,.2)}
+.ftitle{font-size:13px;font-weight:500}
+.furl{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fcvss{font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700}
+.farrow{color:var(--muted);font-size:11px;text-align:center;transition:transform .2s}
+.frow.open .farrow{transform:rotate(180deg)}
+.fdetail{display:none;padding:0 16px 16px;border-top:1px solid var(--border)}
+.frow.open .fdetail{display:block}
+.fd-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:12px 0}
+.fd-item{background:var(--bg);border:1px solid var(--border);border-radius:7px;padding:9px 11px}
+.fd-key{font-size:9px;font-weight:700;letter-spacing:.7px;text-transform:uppercase;color:var(--muted);margin-bottom:3px}
+.fd-val{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text)}
+.fd-desc{font-size:12px;color:var(--muted);line-height:1.7;margin-bottom:10px}
+.fd-payload{background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:8px 12px;font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--high);overflow-x:auto;white-space:nowrap;margin-bottom:8px}
+.fd-fix{background:rgba(34,211,122,.06);border:1px solid rgba(34,211,122,.18);border-radius:7px;padding:11px 13px}
+.fd-fix-label{font-size:9px;font-weight:700;letter-spacing:.7px;color:var(--low);margin-bottom:4px}
+.fd-fix-text{font-size:12px;color:#6ee8a4;line-height:1.7}
+.empty-findings{padding:50px;text-align:center;color:var(--muted);font-size:13px}
+
+/* ── SCAN HISTORY PAGE ── */
+.history-list{display:flex;flex-direction:column;gap:10px}
+.history-card{background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:16px;display:flex;align-items:center;gap:16px;cursor:pointer;transition:all .2s}
+.history-card:hover{border-color:var(--border2);transform:translateY(-1px)}
+.hc-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+.hc-info{flex:1}
+.hc-target{font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:500;margin-bottom:4px}
+.hc-meta{font-size:11px;color:var(--muted)}
+.hc-score{font-family:'Bebas Neue',cursive;font-size:32px;letter-spacing:1px}
+.hc-badges{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.hc-badge{font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;padding:2px 8px;border-radius:4px}
+.hc-action{display:flex;flex-direction:column;gap:6px;align-items:flex-end}
+.hc-btn{font-size:11px;padding:5px 12px;border-radius:6px;border:1px solid var(--border2);background:transparent;color:var(--muted);cursor:pointer;font-family:'DM Sans',sans-serif;transition:all .2s;white-space:nowrap}
+.hc-btn:hover{border-color:var(--accent);color:var(--accent)}
+.hc-btn.del:hover{border-color:var(--critical);color:var(--critical)}
+
+/* ── PROGRESS BAR ── */
+.phase-bar{display:flex;gap:5px;padding:10px 16px;border-bottom:1px solid var(--border)}
+.phase-pill{flex:1;text-align:center;padding:4px 5px;border-radius:4px;font-size:9px;font-weight:600;font-family:'JetBrains Mono',monospace;border:1px solid var(--border);color:var(--dim);background:var(--bg);letter-spacing:.3px;transition:all .3s}
+.phase-pill.active{border-color:var(--accent);color:var(--accent);background:rgba(0,217,255,.08);box-shadow:0 0 6px rgba(0,217,255,.15)}
+.phase-pill.done{border-color:var(--low);color:var(--low);background:rgba(34,211,122,.08)}
+
+/* ── TOAST ── */
+.toast{position:fixed;bottom:20px;right:20px;background:var(--bg3);border:1px solid var(--border2);border-radius:9px;padding:11px 16px;font-size:12px;z-index:999;box-shadow:0 8px 28px rgba(0,0,0,.5);opacity:0;transform:translateY(8px);transition:all .25s;pointer-events:none}
+.toast.show{opacity:1;transform:none}
+
+/* scrollbar */
+::-webkit-scrollbar{width:4px;height:4px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--dim);border-radius:2px}
+
+@media(max-width:900px){.sidebar{width:200px}.stat-row{grid-template-columns:repeat(3,1fr)}.two-col{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+
+<!-- TOPBAR -->
+<div class="topbar">
+  <div class="logo">VULN<b>SCAN</b></div>
+  <div class="topbar-sep"></div>
+  <div class="status-pill">
+    <div class="sdot idle" id="sdot"></div>
+    <span id="statusText">Ready</span>
+  </div>
+  <span id="topbarTarget" style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--muted)"></span>
+  <div class="topbar-right">
+    <button class="tbtn" onclick="exportJSON()">↓ JSON</button>
+    <button class="tbtn" onclick="copyMarkdown()">⎘ Markdown</button>
+    <button class="tbtn primary" onclick="showPage('scan')">+ New Scan</button>
+  </div>
+</div>
+
+<div class="layout">
+  <!-- SIDEBAR -->
+  <div class="sidebar">
+    <!-- Scan Form -->
+    <div class="scan-form">
+      <div>
+        <label>Target URL</label>
+        <input class="sf-input" id="targetInput" placeholder="https://example.com">
+      </div>
+      <div>
+        <label>Crawl Depth</label>
+        <select class="sf-select" id="depthSel">
+          <option value="1">Shallow (depth 1)</option>
+          <option value="2" selected>Normal (depth 2)</option>
+          <option value="3">Deep (depth 3)</option>
+        </select>
+      </div>
+      <div>
+        <label>Modules</label>
+        <div class="module-grid" id="moduleGrid"></div>
+      </div>
+      <button class="scan-go" id="scanBtn" onclick="startScan()">▶ START SCAN</button>
+    </div>
+
+    <div class="sb-section">Views</div>
+    <a class="sb-nav active" onclick="showPage('overview')" href="#">
+      <span class="ico">◈</span> Overview
+    </a>
+    <a class="sb-nav" onclick="showPage('findings')" href="#">
+      <span class="ico">⚑</span> Findings
+      <span class="sb-badge n" id="nb-total">0</span>
+    </a>
+    <a class="sb-nav" onclick="showPage('critical')" href="#">
+      <span class="ico">◉</span> Critical
+      <span class="sb-badge c" id="nb-crit">0</span>
+    </a>
+    <a class="sb-nav" onclick="showPage('high')" href="#">
+      <span class="ico">◉</span> High
+      <span class="sb-badge h" id="nb-high">0</span>
+    </a>
+    <a class="sb-nav" onclick="showPage('medium')" href="#">
+      <span class="ico">◎</span> Medium
+      <span class="sb-badge m" id="nb-med">0</span>
+    </a>
+    <a class="sb-nav" onclick="showPage('low')" href="#">
+      <span class="ico">○</span> Low / Info
+      <span class="sb-badge l" id="nb-low">0</span>
+    </a>
+    <a class="sb-nav" onclick="showPage('history')" href="#">
+      <span class="ico">☰</span> Scan History
+    </a>
+
+    <div class="sidebar-risk">
+      <div class="sr-label">Risk Score</div>
+      <div class="sr-num" id="srNum">--</div>
+      <div class="sr-bar"><div class="sr-fill" id="srFill"></div></div>
+      <div class="sr-tag" id="srTag">NOT SCANNED</div>
+    </div>
+  </div>
+
+  <!-- MAIN -->
+  <div class="main">
+
+    <!-- OVERVIEW PAGE -->
+    <div class="page active" id="page-overview">
+      <div class="stat-row" id="statRow">
+        <div class="sc tot"><div class="sc-label">Total</div><div class="sc-num" id="sc-tot">0</div><div class="sc-sub">vulnerabilities</div></div>
+        <div class="sc cri" onclick="showPage('critical')"><div class="sc-label">Critical</div><div class="sc-num" id="sc-crit">0</div><div class="sc-sub">CVSS 9.0+</div></div>
+        <div class="sc hig" onclick="showPage('high')"><div class="sc-label">High</div><div class="sc-num" id="sc-high">0</div><div class="sc-sub">CVSS 7.0–8.9</div></div>
+        <div class="sc med" onclick="showPage('medium')"><div class="sc-label">Medium</div><div class="sc-num" id="sc-med">0</div><div class="sc-sub">CVSS 4.0–6.9</div></div>
+        <div class="sc low" onclick="showPage('low')"><div class="sc-label">Low / Info</div><div class="sc-num" id="sc-low">0</div><div class="sc-sub">CVSS &lt; 4.0</div></div>
+      </div>
+
+      <!-- Phase bar (shown during scan) -->
+      <div id="phaseBar" style="display:none" class="panel" style="margin-bottom:14px">
+        <div class="phase-bar" id="phasePills"></div>
+      </div>
+
+      <!-- Log terminal -->
+      <div class="log-panel">
+        <div class="ph"><span class="ph-ico">⌨</span><h3>Live Scanner Log</h3><span id="logCount" style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted)"></span></div>
+        <div class="log-body" id="logBody">
+          <div class="ll"><span class="lts">[--:--:--]</span> <span class="ltag info">[VULNSCAN]</span> <span class="lmsg">System ready. Enter a target URL and click Start Scan.<span class="cur">_</span></span></div>
+        </div>
+      </div>
+
+      <div class="two-col">
+        <div class="panel">
+          <div class="ph"><span class="ph-ico">📊</span><h3>By Category</h3></div>
+          <div class="pb" id="catBars"><div style="color:var(--muted);font-size:12px;text-align:center;padding:20px">Run a scan to see results</div></div>
+        </div>
+        <div class="panel">
+          <div class="ph"><span class="ph-ico">◕</span><h3>Severity Split</h3></div>
+          <div class="pb" id="donutArea"><div style="color:var(--muted);font-size:12px;text-align:center;padding:20px">Run a scan to see results</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- FINDINGS PAGE -->
+    <div class="page" id="page-findings">
+      <div class="findings-toolbar">
+        <button class="filt-chip ac" id="fc-ALL" onclick="setFilter('ALL')">ALL</button>
+        <button class="filt-chip" id="fc-CRITICAL" onclick="setFilter('CRITICAL')">CRITICAL</button>
+        <button class="filt-chip" id="fc-HIGH" onclick="setFilter('HIGH')">HIGH</button>
+        <button class="filt-chip" id="fc-MEDIUM" onclick="setFilter('MEDIUM')">MEDIUM</button>
+        <button class="filt-chip" id="fc-LOW" onclick="setFilter('LOW')">LOW</button>
+        <div class="search-wrap">
+          <input class="srch" id="searchBox" placeholder="Search findings..." oninput="renderFindings()">
+        </div>
+      </div>
+      <div class="findings-table">
+        <div class="ft-head">
+          <span>Severity</span><span>Finding</span><span>Parameter</span><span>CVSS</span><span></span>
+        </div>
+        <div id="findingsBody"><div class="empty-findings">No findings yet. Run a scan first.</div></div>
+      </div>
+    </div>
+
+    <!-- CRITICAL PAGE -->
+    <div class="page" id="page-critical">
+      <div class="findings-table">
+        <div class="ft-head"><span>Severity</span><span>Finding</span><span>Parameter</span><span>CVSS</span><span></span></div>
+        <div id="critBody"><div class="empty-findings">No critical findings.</div></div>
+      </div>
+    </div>
+
+    <!-- HIGH PAGE -->
+    <div class="page" id="page-high">
+      <div class="findings-table">
+        <div class="ft-head"><span>Severity</span><span>Finding</span><span>Parameter</span><span>CVSS</span><span></span></div>
+        <div id="highBody"><div class="empty-findings">No high findings.</div></div>
+      </div>
+    </div>
+
+    <!-- MEDIUM PAGE -->
+    <div class="page" id="page-medium">
+      <div class="findings-table">
+        <div class="ft-head"><span>Severity</span><span>Finding</span><span>Parameter</span><span>CVSS</span><span></span></div>
+        <div id="medBody"><div class="empty-findings">No medium findings.</div></div>
+      </div>
+    </div>
+
+    <!-- LOW PAGE -->
+    <div class="page" id="page-low">
+      <div class="findings-table">
+        <div class="ft-head"><span>Severity</span><span>Finding</span><span>Parameter</span><span>CVSS</span><span></span></div>
+        <div id="lowBody"><div class="empty-findings">No low/info findings.</div></div>
+      </div>
+    </div>
+
+    <!-- HISTORY PAGE -->
+    <div class="page" id="page-history">
+      <div class="history-list" id="historyList">
+        <div style="color:var(--muted);font-size:13px;text-align:center;padding:40px">No previous scans.</div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ── STATE ──────────────────────────────────────────────────────
+let currentScanId = null;
+let allFindings   = [];
+let activeFilter  = 'ALL';
+let sse           = null;
+let scanHistory   = [];
+const PHASES      = ['Connecting','Crawling','Scanning','Complete'];
+const MODULES     = ['sqli','xss','lfi','redirect','headers','files','csrf','clickjacking','ssl'];
+const MOD_LABELS  = {sqli:'SQLi',xss:'XSS',lfi:'LFI',redirect:'Redirect',headers:'Headers',files:'Files',csrf:'CSRF',clickjacking:'Clickjack',ssl:'SSL/TLS'};
+
+// ── INIT ───────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  // Module checkboxes
+  const grid = document.getElementById('moduleGrid');
+  MODULES.forEach(m => {
+    const lbl = document.createElement('label');
+    lbl.className = 'mod-check on';
+    lbl.dataset.mod = m;
+    lbl.innerHTML = `<input type="checkbox" checked><span>${MOD_LABELS[m]}</span>`;
+    lbl.addEventListener('click', () => {
+      const cb = lbl.querySelector('input');
+      cb.checked = !cb.checked;
+      lbl.classList.toggle('on', cb.checked);
+    });
+    grid.appendChild(lbl);
+  });
+
+  // Phase pills
+  const bar = document.getElementById('phasePills');
+  PHASES.forEach(p => {
+    const pill = document.createElement('div');
+    pill.className = 'phase-pill';
+    pill.id = 'pp-' + p.toLowerCase();
+    pill.textContent = p;
+    bar.appendChild(pill);
+  });
+
+  loadHistory();
+});
+
+// ── PAGES ──────────────────────────────────────────────────────
+function showPage(name) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.sb-nav').forEach(n => n.classList.remove('active'));
+
+  // map severity pages to findings page
+  const pageId = ['critical','high','medium','low'].includes(name) ? name : name;
+  const el = document.getElementById('page-' + pageId);
+  if (el) el.classList.add('active');
+
+  // activate nav
+  const nav = [...document.querySelectorAll('.sb-nav')].find(n => n.getAttribute('onclick') && n.getAttribute('onclick').includes(`'${name}'`));
+  if (nav) nav.classList.add('active');
+
+  if (name === 'history') loadHistory();
+  if (['findings','critical','high','medium','low'].includes(name)) renderSevPage(name);
+}
+
+// ── SCAN ───────────────────────────────────────────────────────
+async function startScan() {
+  const target = document.getElementById('targetInput').value.trim();
+  if (!target) { toast('⚠️ Enter a target URL'); return; }
+
+  const modules = [...document.querySelectorAll('.mod-check input:checked')]
+    .map(el => el.closest('.mod-check').dataset.mod);
+  if (!modules.length) { toast('⚠️ Select at least one module'); return; }
+
+  const depth = parseInt(document.getElementById('depthSel').value);
+
+  document.getElementById('scanBtn').disabled = true;
+  document.getElementById('scanBtn').textContent = '⏳ Scanning...';
+  allFindings = [];
+  clearUI();
+
+  try {
+    const res = await fetch('/api/scan', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ target, modules, depth, timeout: 10 })
+    });
+    const data = await res.json();
+    if (data.error) { toast('❌ ' + data.error); resetBtn(); return; }
+    currentScanId = data.scan_id;
+    document.getElementById('topbarTarget').textContent = target;
+    showPage('overview');
+    startSSE(data.scan_id);
+  } catch(e) {
+    toast('❌ Could not connect to backend: ' + e.message);
+    resetBtn();
+  }
+}
+
+function startSSE(scanId) {
+  if (sse) sse.close();
+  setStatus('running');
+  document.getElementById('phaseBar').style.display = 'block';
+  document.getElementById('logBody').classList.add('active');
+
+  sse = new EventSource(`/api/scan/${scanId}/stream`);
+
+  sse.onmessage = (e) => {
+    const msg = JSON.parse(e.data);
+
+    if (msg.type === 'log') {
+      appendLog(msg.data);
+    }
+
+    if (msg.type === 'state') {
+      const d = msg.data;
+      updateStats(d.stats || {});
+      updatePhase(d.phase);
+      updateRisk(d.risk_score || 0);
+    }
+
+    if (msg.type === 'complete') {
+      const scan = msg.data;
+      allFindings = scan.findings || [];
+      updateStats(scan.stats || {});
+      updateRisk(scan.risk_score || 0);
+      updatePhase('complete');
+      renderCharts();
+      renderAllFindingPages();
+      setStatus('complete');
+      document.getElementById('scanBtn').disabled = false;
+      document.getElementById('scanBtn').textContent = '▶ START SCAN';
+      document.getElementById('logBody').classList.remove('active');
+      toast(`✅ Scan complete — ${allFindings.length} findings`);
+      loadHistory();
+      sse.close();
+    }
+  };
+
+  sse.onerror = () => {
+    sse.close();
+    resetBtn();
+    setStatus('idle');
+  };
+}
+
+// ── UI HELPERS ─────────────────────────────────────────────────
+function clearUI() {
+  document.getElementById('logBody').innerHTML = '';
+  document.getElementById('logCount').textContent = '';
+  updateStats({});
+  updateRisk(0);
+  document.getElementById('catBars').innerHTML = '<div style="color:var(--muted);font-size:12px;text-align:center;padding:20px">Scanning...</div>';
+  document.getElementById('donutArea').innerHTML = '<div style="color:var(--muted);font-size:12px;text-align:center;padding:20px">Scanning...</div>';
+  PHASES.forEach(p => {
+    const el = document.getElementById('pp-' + p.toLowerCase());
+    if (el) el.className = 'phase-pill';
+  });
+}
+
+function resetBtn() {
+  document.getElementById('scanBtn').disabled = false;
+  document.getElementById('scanBtn').textContent = '▶ START SCAN';
+}
+
+function setStatus(s) {
+  const dot  = document.getElementById('sdot');
+  const text = document.getElementById('statusText');
+  dot.className = 'sdot ' + s;
+  text.textContent = {idle:'Ready',running:'Scanning',complete:'Complete',error:'Error'}[s] || s;
+}
+
+function updatePhase(phase) {
+  const map = {connecting:0,crawling:1,scanning:2,complete:3};
+  const idx = map[phase] ?? -1;
+  PHASES.forEach((p,i) => {
+    const el = document.getElementById('pp-' + p.toLowerCase());
+    if (!el) return;
+    if (i < idx) el.className = 'phase-pill done';
+    else if (i === idx) el.className = 'phase-pill active';
+    else el.className = 'phase-pill';
+  });
+}
+
+function updateStats(s) {
+  document.getElementById('sc-tot').textContent  = s.total  || 0;
+  document.getElementById('sc-crit').textContent = s.CRITICAL || 0;
+  document.getElementById('sc-high').textContent = s.HIGH   || 0;
+  document.getElementById('sc-med').textContent  = s.MEDIUM || 0;
+  document.getElementById('sc-low').textContent  = (s.LOW||0) + (s.INFO||0);
+  document.getElementById('nb-total').textContent = s.total  || 0;
+  document.getElementById('nb-crit').textContent  = s.CRITICAL || 0;
+  document.getElementById('nb-high').textContent  = s.HIGH   || 0;
+  document.getElementById('nb-med').textContent   = s.MEDIUM || 0;
+  document.getElementById('nb-low').textContent   = (s.LOW||0) + (s.INFO||0);
+}
+
+function updateRisk(score) {
+  const color = score>=80?'var(--critical)':score>=60?'var(--high)':score>=40?'var(--medium)':score>0?'var(--low)':'var(--muted)';
+  const label = score>=80?'CRITICAL':score>=60?'HIGH':score>=40?'MEDIUM':score>0?'LOW':'CLEAN';
+  document.getElementById('srNum').textContent = score || '--';
+  document.getElementById('srNum').style.color = color;
+  document.getElementById('srFill').style.width = (score||0) + '%';
+  document.getElementById('srFill').style.background = color;
+  document.getElementById('srTag').textContent = label;
+  document.getElementById('srTag').style.color = color;
+}
+
+function appendLog(entry) {
+  const body = document.getElementById('logBody');
+  const div  = document.createElement('div');
+  div.className = 'll';
+  div.innerHTML = `<span class="lts">[${entry.ts}]</span> <span class="ltag ${entry.level}">[${entry.level.toUpperCase()}]</span> <span class="lmsg">${escHtml(entry.msg)}</span>`;
+  body.appendChild(div);
+  body.scrollTop = body.scrollHeight;
+  const count = body.querySelectorAll('.ll').length;
+  document.getElementById('logCount').textContent = count + ' events';
+}
+
+// ── CHARTS ─────────────────────────────────────────────────────
+function renderCharts() {
+  renderCatBars();
+  renderDonut();
+}
+
+function detectCat(title) {
+  const t = title.toLowerCase();
+  if (t.includes('sql')) return 'SQL Injection';
+  if (t.includes('xss') || t.includes('cross-site scri')) return 'XSS';
+  if (t.includes('lfi') || t.includes('path traversal') || t.includes('file inclusion')) return 'Path Traversal';
+  if (t.includes('ssrf')) return 'SSRF';
+  if (t.includes('auth') || t.includes('credential') || t.includes('rate limit')) return 'Authentication';
+  if (t.includes('ssl') || t.includes('tls') || t.includes('https') || t.includes('certificate')) return 'SSL/TLS';
+  if (t.includes('header') || t.includes('csp') || t.includes('hsts')) return 'HTTP Headers';
+  if (t.includes('file') || t.includes('.git') || t.includes('.env') || t.includes('exposed') || t.includes('sensitive') || t.includes('directory') || t.includes('phpmy')) return 'Sensitive Files';
+  if (t.includes('csrf')) return 'CSRF';
+  if (t.includes('clickjack')) return 'Clickjacking';
+  if (t.includes('redirect')) return 'Open Redirect';
+  return 'Other';
+}
+
+const CAT_COLORS = {'SQL Injection':'#ff3b5c','XSS':'#ff6b35','Path Traversal':'#ff3b5c','Authentication':'#ff3b5c','SSL/TLS':'#ffb020','HTTP Headers':'#00d9ff','Sensitive Files':'#ffb020','CSRF':'#ffb020','Clickjacking':'#ffb020','Open Redirect':'#ff6b35','SSRF':'#ff6b35','Other':'#5b8dee'};
+
+function renderCatBars() {
+  const cats = {};
+  allFindings.forEach(f => { const c = detectCat(f.title); cats[c] = (cats[c]||0)+1; });
+  const max = Math.max(...Object.values(cats),1);
+  const html = Object.entries(cats).sort((a,b)=>b[1]-a[1]).map(([cat,cnt]) => `
+    <div class="vbr">
+      <div class="vbl">${cat.length>10?cat.substring(0,10)+'…':cat}</div>
+      <div class="vbt"><div class="vbf" style="width:${cnt/max*100}%;background:${CAT_COLORS[cat]||'#5b8dee'}"></div></div>
+      <div class="vbc" style="color:${CAT_COLORS[cat]||'#5b8dee'}">${cnt}</div>
+    </div>
+  `).join('') || '<div style="color:var(--muted);font-size:12px;text-align:center;padding:16px">No findings</div>';
+  document.getElementById('catBars').innerHTML = html;
+}
+
+function renderDonut() {
+  const counts = {CRITICAL:0,HIGH:0,MEDIUM:0,LOW:0,INFO:0};
+  allFindings.forEach(f => { if (counts[f.severity]!==undefined) counts[f.severity]++; });
+  const total = Object.values(counts).reduce((a,b)=>a+b,0);
+  if (!total) { document.getElementById('donutArea').innerHTML = '<div style="color:var(--muted);font-size:12px;text-align:center;padding:16px">No findings</div>'; return; }
+  const sevs = [{key:'CRITICAL',color:'#ff3b5c',label:'Critical'},{key:'HIGH',color:'#ff6b35',label:'High'},{key:'MEDIUM',color:'#ffb020',label:'Medium'},{key:'LOW',color:'#22d37a',label:'Low'},{key:'INFO',color:'#5b8dee',label:'Info'}].filter(s=>counts[s.key]>0);
+  const r=52,cx=70,cy=70,sw=16,circ=2*Math.PI*r;
+  let offset=0,paths='';
+  sevs.forEach(s=>{ const d=counts[s.key]/total*circ; paths+=`<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${s.color}" stroke-width="${sw}" stroke-dasharray="${d} ${circ-d}" stroke-dashoffset="${-offset}" transform="rotate(-90 ${cx} ${cy})" opacity=".9"/>`; offset+=d; });
+  const leg = sevs.map(s=>`<div class="dl-item"><div class="dl-dot" style="background:${s.color}"></div><div class="dl-label">${s.label}</div><div class="dl-val" style="color:${s.color}">${counts[s.key]}</div></div>`).join('');
+  document.getElementById('donutArea').innerHTML = `<div class="donut-wrap"><svg width="140" height="140" viewBox="0 0 140 140"><circle cx="70" cy="70" r="52" fill="none" stroke="var(--bg)" stroke-width="16"/>${paths}<text x="70" y="65" text-anchor="middle" font-family="'Bebas Neue',cursive" font-size="26" fill="var(--text)">${total}</text><text x="70" y="82" text-anchor="middle" font-family="'DM Sans',sans-serif" font-size="9" fill="var(--muted)" letter-spacing="1">TOTAL</text></svg><div class="donut-leg">${leg}</div></div>`;
+}
+
+// ── FINDINGS RENDERING ─────────────────────────────────────────
+const SEV_ORDER = {CRITICAL:0,HIGH:1,MEDIUM:2,LOW:3,INFO:4};
+
+function buildFindingRows(findings, containerId) {
+  const el = document.getElementById(containerId);
+  if (!findings.length) { el.innerHTML = '<div class="empty-findings">No findings in this category.</div>'; return; }
+  findings.sort((a,b) => SEV_ORDER[a.severity]-SEV_ORDER[b.severity]);
+  el.innerHTML = findings.map((f,i) => `
+    <div class="frow" id="${containerId}-row-${i}" onclick="toggleRow('${containerId}-row-${i}')">
+      <div class="frow-main">
+        <span class="sev ${f.severity}">${f.severity}</span>
+        <div>
+          <div class="ftitle">${escHtml(f.title)}</div>
+          <div class="furl">${escHtml(f.url)}</div>
+        </div>
+        <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted)">${escHtml(f.param||'')}</div>
+        <div class="fcvss" style="color:${sevColor(f.severity)}">CVSS ${f.cvss||'N/A'}</div>
+        <div class="farrow">▼</div>
+      </div>
+      <div class="fdetail">
+        <div class="fd-grid">
+          <div class="fd-item"><div class="fd-key">Method</div><div class="fd-val">${escHtml(f.method||'')}</div></div>
+          <div class="fd-item"><div class="fd-key">Parameter</div><div class="fd-val">${escHtml(f.param||'N/A')}</div></div>
+          <div class="fd-item"><div class="fd-key">CWE</div><div class="fd-val">${escHtml(f.cwe||'N/A')}</div></div>
+          <div class="fd-item"><div class="fd-key">CVSS Score</div><div class="fd-val" style="color:${sevColor(f.severity)}">${escHtml(f.cvss||'N/A')}</div></div>
+        </div>
+        <div class="fd-desc">${escHtml(f.description||'')}</div>
+        ${f.payload && f.payload!=='N/A' ? `<div class="fd-payload">Payload: ${escHtml(f.payload)}</div>` : ''}
+        ${f.evidence ? `<div class="fd-payload" style="color:var(--muted)">Evidence: ${escHtml(f.evidence)}</div>` : ''}
+        <div class="fd-fix"><div class="fd-fix-label">✅ REMEDIATION</div><div class="fd-fix-text">${escHtml(f.remediation||'')}</div></div>
+      </div>
+    </div>
+  `).join('');
+}
+
+function toggleRow(id) {
+  document.getElementById(id)?.classList.toggle('open');
+}
+
+function renderFindings() {
+  const search = document.getElementById('searchBox').value.toLowerCase();
+  let filtered = allFindings;
+  if (activeFilter !== 'ALL') {
+    if (activeFilter === 'LOW') filtered = filtered.filter(f => ['LOW','INFO'].includes(f.severity));
+    else filtered = filtered.filter(f => f.severity === activeFilter);
+  }
+  if (search) filtered = filtered.filter(f => [f.title,f.url,f.param,f.description].some(v => (v||'').toLowerCase().includes(search)));
+
+  // rebuild filter chips
+  ['ALL','CRITICAL','HIGH','MEDIUM','LOW'].forEach(s => {
+    const btn = document.getElementById('fc-'+s);
+    if (!btn) return;
+    const classMap = {ALL:'ac',CRITICAL:'ac-c',HIGH:'ac-h',MEDIUM:'ac-m',LOW:'ac-l'};
+    btn.className = 'filt-chip' + (activeFilter===s ? ' '+classMap[s] : '');
+  });
+
+  buildFindingRows(filtered, 'findingsBody');
+}
+
+function renderSevPage(name) {
+  const sevMap = {findings:null,critical:'CRITICAL',high:'HIGH',medium:'MEDIUM',low:['LOW','INFO']};
+  const sev = sevMap[name];
+  const bodyMap = {findings:'findingsBody',critical:'critBody',high:'highBody',medium:'medBody',low:'lowBody'};
+  const bodyId = bodyMap[name];
+  if (!bodyId) return;
+  let filtered = allFindings;
+  if (sev) {
+    if (Array.isArray(sev)) filtered = filtered.filter(f => sev.includes(f.severity));
+    else filtered = filtered.filter(f => f.severity === sev);
+  }
+  buildFindingRows(filtered, bodyId);
+}
+
+function renderAllFindingPages() {
+  renderFindings();
+  ['critical','high','medium','low'].forEach(renderSevPage);
+}
+
+function setFilter(f) {
+  activeFilter = f;
+  renderFindings();
+}
+
+// ── HISTORY ────────────────────────────────────────────────────
+async function loadHistory() {
+  try {
+    const res = await fetch('/api/scans');
+    scanHistory = await res.json();
+    renderHistory();
+  } catch(e) {}
+}
+
+function renderHistory() {
+  const el = document.getElementById('historyList');
+  if (!scanHistory.length) {
+    el.innerHTML = '<div style="color:var(--muted);font-size:13px;text-align:center;padding:40px">No previous scans.</div>';
+    return;
+  }
+  el.innerHTML = scanHistory.map(s => {
+    const score = s.risk_score || 0;
+    const color = score>=80?'var(--critical)':score>=60?'var(--high)':score>=40?'var(--medium)':score>0?'var(--low)':'var(--muted)';
+    const label = score>=80?'CRITICAL':score>=60?'HIGH':score>=40?'MEDIUM':score>0?'LOW':'CLEAN';
+    const st = s.stats || {};
+    const date = s.start_time ? new Date(s.start_time).toLocaleString() : '';
+    return `
+      <div class="history-card" onclick="loadScan('${s.id}')">
+        <div class="hc-dot" style="background:${color};box-shadow:0 0 6px ${color}"></div>
+        <div class="hc-info">
+          <div class="hc-target">${s.target}</div>
+          <div class="hc-meta">${date} &nbsp;·&nbsp; ${s.status}</div>
+          <div class="hc-badges">
+            ${(st.CRITICAL||0)>0?`<span class="hc-badge" style="background:var(--crit-bg);color:var(--critical)">${st.CRITICAL} CRITICAL</span>`:''}
+            ${(st.HIGH||0)>0?`<span class="hc-badge" style="background:var(--high-bg);color:var(--high)">${st.HIGH} HIGH</span>`:''}
+            ${(st.MEDIUM||0)>0?`<span class="hc-badge" style="background:var(--med-bg);color:var(--medium)">${st.MEDIUM} MEDIUM</span>`:''}
+            ${(st.LOW||0)>0?`<span class="hc-badge" style="background:var(--low-bg);color:var(--low)">${st.LOW} LOW</span>`:''}
+          </div>
+        </div>
+        <div class="hc-score" style="color:${color}">${score}</div>
+        <div class="hc-action">
+          <button class="hc-btn" onclick="event.stopPropagation();loadScan('${s.id}')">View Report</button>
+          <button class="hc-btn del" onclick="event.stopPropagation();deleteScan('${s.id}')">Delete</button>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+async function loadScan(id) {
+  try {
+    const res = await fetch('/api/scan/' + id);
+    const scan = await res.json();
+    currentScanId = id;
+    allFindings = scan.findings || [];
+    updateStats(scan.stats || {});
+    updateRisk(scan.risk_score || 0);
+    document.getElementById('topbarTarget').textContent = scan.target || '';
+    // Replay log
+    document.getElementById('logBody').innerHTML = '';
+    (scan.log || []).forEach(e => appendLog(e));
+    renderCharts();
+    renderAllFindingPages();
+    setStatus(scan.status === 'complete' ? 'complete' : 'idle');
+    showPage('overview');
+    toast('📂 Loaded scan: ' + scan.target);
+  } catch(e) {
+    toast('❌ Failed to load scan');
+  }
+}
+
+async function deleteScan(id) {
+  await fetch('/api/scan/' + id, {method:'DELETE'});
+  if (currentScanId === id) { currentScanId = null; allFindings = []; clearUI(); setStatus('idle'); }
+  loadHistory();
+  toast('🗑 Scan deleted');
+}
+
+// ── EXPORT ─────────────────────────────────────────────────────
+function exportJSON() {
+  if (!allFindings.length) { toast('⚠️ No findings to export'); return; }
+  const data = { target: document.getElementById('topbarTarget').textContent, findings: allFindings, exported: new Date().toISOString() };
+  const blob = new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'vulnscan-' + Date.now() + '.json';
+  a.click();
+  toast('📄 Exported JSON');
+}
+
+function copyMarkdown() {
+  if (!allFindings.length) { toast('⚠️ No findings to copy'); return; }
+  let md = `# VulnScan Report\n\n**Target:** ${document.getElementById('topbarTarget').textContent}\n**Date:** ${new Date().toLocaleString()}\n\n## Findings (${allFindings.length})\n\n`;
+  allFindings.forEach((f,i) => {
+    md += `### ${i+1}. [${f.severity}] ${f.title}\n- **URL:** ${f.url}\n- **Param:** ${f.param}\n- **CVSS:** ${f.cvss} | **CWE:** ${f.cwe}\n- **Description:** ${f.description}\n- **Fix:** ${f.remediation}\n\n`;
+  });
+  navigator.clipboard.writeText(md).then(() => toast('📋 Copied Markdown'));
+}
+
+// ── UTILS ───────────────────────────────────────────────────────
+function escHtml(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function sevColor(s) {
+  return {CRITICAL:'var(--critical)',HIGH:'var(--high)',MEDIUM:'var(--medium)',LOW:'var(--low)',INFO:'var(--info)'}[s]||'var(--muted)';
+}
+let toastTimer;
+function toast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 3000);
+}
+</script>
+</body>
+</html>
